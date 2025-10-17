@@ -1,45 +1,46 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Tone } from './types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getSuggestions } from './services/geminiService';
+import { Tone, Theme } from './types';
+import Keyboard from './components/Keyboard';
 import ToneSelector from './components/ToneSelector';
 import SuggestionStrip from './components/SuggestionStrip';
-import Keyboard from './components/Keyboard';
+import Header from './components/Header';
 import SettingsModal from './components/SettingsModal';
 
 const App: React.FC = () => {
-  const [text, setText] = useState('');
+  const [text, setText] = useState<string>('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTone, setSelectedTone] = useState<Tone>(Tone.Friendly);
   const [writingStyle, setWritingStyle] = useState<string | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => {
+    const savedTheme = localStorage.getItem('theme');
+    return (savedTheme as Theme) || Theme.Dark;
+  });
+
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const handleSendMessage = () => {
-    console.log("Message sent:", text);
-    // Here you would typically handle the message, e.g., send it to a chat.
-    // For this demo, we will just clear the text input.
-    setText('');
-    setSuggestions([]);
-  };
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme.toLowerCase());
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   const fetchSuggestions = useCallback(async (currentText: string) => {
-    if (!currentText.trim() || currentText.trim().length < 3) {
+    if (!currentText.trim() || currentText.trim().length < 2) {
       setSuggestions([]);
       return;
     }
-    
     setIsLoading(true);
     setError(null);
     try {
       const result = await getSuggestions(currentText, selectedTone, writingStyle);
       setSuggestions(result);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred.');
-      setSuggestions([]);
+    } catch (e) {
+      setError('Failed to get suggestions.');
+      console.error(e);
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +52,7 @@ const App: React.FC = () => {
     }
     debounceTimeoutRef.current = setTimeout(() => {
       fetchSuggestions(text);
-    }, 750); // 750ms debounce delay
+    }, 1000); // 1-second debounce
 
     return () => {
       if (debounceTimeoutRef.current) {
@@ -60,64 +61,65 @@ const App: React.FC = () => {
     };
   }, [text, fetchSuggestions]);
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
+  const handleKeyPress = (key: string) => {
+    switch (key) {
+      case 'backspace':
+        setText((prev) => prev.slice(0, -1));
+        break;
+      case 'space':
+        setText((prev) => prev + ' ');
+        break;
+      case 'send':
+        // Logic for sending the message could be implemented here
+        console.log('Sending:', text);
+        setText('');
+        setSuggestions([]);
+        break;
+      default:
+        // This handles both single characters and multi-character swiped words
+        if (key.length > 1) { // It's a swiped word
+          setText((prev) => (prev ? prev + ' ' : '') + key);
+        } else { // It's a single character
+          setText((prev) => prev + key);
+        }
+        break;
+    }
   };
-  
+
   const handleSuggestionClick = (suggestion: string) => {
     setText(suggestion);
-    textareaRef.current?.focus();
-    setSuggestions([]); 
+    setSuggestions([]);
   };
-  
-  const handleKeyPress = (key: string) => {
-    if (key === 'backspace') {
-      setText(prev => prev.slice(0, -1));
-    } else if (key === 'send') {
-      handleSendMessage();
-    } else if (key === 'space') {
-      setText(prev => prev + ' ');
-    } else {
-       // Handle single chars and full words from swipe
-      setText(prev => (prev.length > 0 && prev[prev.length -1] !== ' ' && key.length > 1) ? prev + ' ' + key : prev + key);
-    }
-    textareaRef.current?.focus();
-  };
-  
+
   return (
-    <div className="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4 font-sans">
-      <div className="w-full max-w-2xl flex flex-col items-center space-y-4">
-        <div className="w-full flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-cyan-400">AI Keyboard</h1>
-            <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-            </button>
-        </div>
-        <textarea
-          ref={textareaRef}
-          className="w-full h-48 bg-gray-800 border-2 border-gray-700 focus:border-cyan-500 focus:ring-cyan-500 rounded-lg p-4 text-lg resize-none outline-none transition-colors"
-          value={text}
-          onChange={handleTextChange}
-          placeholder="Start typing or use the keyboard..."
-        />
-        <ToneSelector selectedTone={selectedTone} onSelectTone={setSelectedTone} />
-        <SuggestionStrip 
-          suggestions={suggestions} 
-          isLoading={isLoading} 
-          error={error} 
-          onSuggestionClick={handleSuggestionClick} 
-        />
-         <div className="pt-4 w-full">
-            <Keyboard onKeyPress={handleKeyPress} />
-         </div>
+    <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)] p-4 font-sans">
+      <div className="w-full max-w-sm h-[80vh] max-h-[900px] flex flex-col bg-[var(--bg-secondary)] rounded-3xl shadow-2xl border-4 border-gray-700 overflow-hidden">
+        <Header onSettingsClick={() => setIsSettingsOpen(true)} />
+        <main className="flex-grow flex flex-col p-3 gap-3">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="w-full flex-grow p-3 bg-[var(--bg-tertiary)] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] border border-[var(--border-color)]"
+            placeholder="Start typing..."
+          />
+          <ToneSelector selectedTone={selectedTone} onSelectTone={setSelectedTone} />
+           <SuggestionStrip
+            suggestions={suggestions}
+            isLoading={isLoading}
+            error={error}
+            onSuggestionClick={handleSuggestionClick}
+          />
+        </main>
+        <footer className="flex justify-center p-2 bg-[var(--bg-secondary)]">
+          <Keyboard onKeyPress={handleKeyPress} />
+        </footer>
       </div>
-      <SettingsModal 
+       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         onStyleUpload={setWritingStyle}
+        selectedTheme={theme}
+        onThemeChange={setTheme}
       />
     </div>
   );

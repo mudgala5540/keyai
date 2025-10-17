@@ -1,4 +1,3 @@
-
 export enum Tone {
   Corporate = 'Corporate',
   Emotional = 'Emotional',
@@ -6,4 +5,10 @@ export enum Tone {
   Formal = 'Formal',
   Friendly = 'Friendly',
   Casual = 'Casual',
+}
+
+export enum Theme {
+  Dark = 'Dark',
+  Light = 'Light',
+  Oceanic = 'Oceanic',
 }

@@ -1,65 +1,64 @@
-import React, { forwardRef } from 'react';
+import React from 'react';
 
 interface KeyProps {
   value: string;
-  originalKey: string;
-  onClick: (value: string) => void;
+  isShiftActive?: boolean;
+  isCapsLock?: boolean;
 }
 
-const Key = forwardRef<HTMLButtonElement, KeyProps>(({ value, originalKey, onClick }, ref) => {
-  const getStyle = () => {
-    switch (originalKey) {
-      case 'backspace':
-      case 'shift':
-        return 'w-16 bg-gray-600 flex-grow-0';
-      case 'space':
-        return 'flex-grow bg-gray-600';
-      case 'send':
-        return 'w-24 bg-cyan-600 text-white flex-grow-0';
-      default:
-        return 'w-10 flex-grow-0';
-    }
-  };
+const ShiftIcon: React.FC<{ active: boolean, caps: boolean }> = ({ active, caps }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        {caps && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 11h14" />}
+    </svg>
+);
+
+const BackspaceIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l-4-4m0 0l4-4m-4 4h12a2 2 0 012 2v4a2 2 0 01-2 2H8" />
+    </svg>
+);
+
+
+const Key: React.FC<KeyProps> = ({ value, isShiftActive, isCapsLock }) => {
+  const isSpecialKey = value.length > 1;
   
-  const content = () => {
-      if (originalKey === 'backspace') {
-          return (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 002.828 0L21 12M3 12l6.414-6.414a2 2 0 012.828 0L21 12" />
-            </svg>
-          )
-      }
-      if (originalKey === 'shift') {
-        return (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-        )
-      }
-      if (originalKey === 'send') {
-        return 'Send';
-      }
-      if (originalKey === 'space') {
-        return 'SPACE';
-      }
-      return value;
+  let displayContent: React.ReactNode = value;
+  switch (value) {
+    case 'shift':
+      displayContent = <ShiftIcon active={isShiftActive || false} caps={isCapsLock || false} />;
+      break;
+    case 'backspace':
+      displayContent = <BackspaceIcon />;
+      break;
+    case 'space':
+      displayContent = 'space';
+      break;
+    case 'send':
+      displayContent = 'send';
+      break;
   }
+  
+  const keyClasses = `
+    h-12 flex items-center justify-center rounded-md text-lg font-semibold transition-colors
+    bg-[var(--bg-tertiary)] text-[var(--text-primary)]
+    active:bg-[var(--accent-primary)] active:text-white
+    select-none touch-none
+    ${value === 'space' ? 'flex-grow' : 'flex-1'}
+    ${isSpecialKey ? 'bg-[var(--bg-interactive)]' : ''}
+    ${value === 'send' ? '!bg-[var(--accent-secondary)] !text-white flex-grow' : ''}
+    ${value === 'shift' && (isShiftActive || isCapsLock) ? '!bg-[var(--accent-primary)] !text-white' : ''}
+  `;
 
   return (
-    <button
-      ref={ref}
-      onClick={(e) => {
-        e.stopPropagation(); // Prevent click from bubbling to parent div
-        onClick(originalKey)
-      }}
-      className={`h-12 rounded-md text-white font-semibold flex items-center justify-center
-        transition-all duration-75 ease-in-out active:bg-gray-500 active:scale-95 text-lg z-20
-        ${originalKey.length === 1 ? 'bg-gray-700 hover:bg-gray-600' : ''}
-        ${getStyle()}`}
+    <div
+      data-key={value}
+      className={keyClasses}
+      aria-label={value}
     >
-      {content()}
-    </button>
+      {displayContent}
+    </div>
   );
-});
+};
 
 export default Key;

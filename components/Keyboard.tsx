@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Key from './Key';
 import { findBestWord } from '../dictionary';
 
@@ -6,166 +6,213 @@ interface KeyboardProps {
   onKeyPress: (key: string) => void;
 }
 
-const keyLayout = [
+type Layout = 'letters' | 'symbols';
+type ShiftMode = 'off' | 'once' | 'caps';
+
+const lowerCaseLayout = [
   ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
   ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
   ['shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'],
+  ['?123', 'space', 'send'],
 ];
 
+const upperCaseLayout = [
+  ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+  ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+  ['shift', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', 'backspace'],
+  ['?123', 'space', 'send'],
+];
+
+const symbolsLayout = [
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+  ['@', '#', '$', '_', '&', '-', '+', '(', ')', '/'],
+  ['=', '*', '"', "'", ':', ';', '!', '?', 'backspace'],
+  ['ABC', 'space', '.'],
+];
+
+
 const Keyboard: React.FC<KeyboardProps> = ({ onKeyPress }) => {
-  const [isShifted, setIsShifted] = useState(false);
-  const [isSwiping, setIsSwiping] = useState(false);
-  const swipePathRef = useRef<{ x: number; y: number }[]>([]);
-  const swipeKeysRef = useRef<string[]>([]);
-
-  const keyRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
-  const keyboardRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  const getRelativeCoords = (e: React.PointerEvent) => {
-    const rect = keyboardRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
+  const [layout, setLayout] = useState<Layout>('letters');
+  const [shiftMode, setShiftMode] = useState<ShiftMode>('off');
   
-  const drawSwipeTrail = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
+  const gestureStateRef = useRef({
+    isDown: false,
+    isSwipe: false,
+    path: '',
+    startTime: 0,
+  });
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (swipePathRef.current.length < 2) return;
+  const lastShiftTapRef = useRef(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-    ctx.beginPath();
-    ctx.moveTo(swipePathRef.current[0].x, swipePathRef.current[0].y);
-    for (let i = 1; i < swipePathRef.current.length; i++) {
-      ctx.lineTo(swipePathRef.current[i].x, swipePathRef.current[i].y);
+  useEffect(() => {
+    // When switching to symbols, turn off shift/caps.
+    if (layout === 'symbols') {
+      setShiftMode('off');
     }
-    ctx.strokeStyle = '#06b6d4'; // cyan-500
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
+  }, [layout]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+        canvas.width = container.offsetWidth;
+        canvas.height = container.offsetHeight;
+    });
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
   }, []);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    setIsSwiping(true);
-    swipePathRef.current = [getRelativeCoords(e)];
-    swipeKeysRef.current = [];
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
+  const getCoords = (e: React.PointerEvent<HTMLDivElement>): [number, number] | null => {
+    const container = containerRef.current;
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    return [e.clientX - rect.left, e.clientY - rect.top];
+  }
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isSwiping) return;
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const target = e.target as HTMLElement;
+    const key = target.closest('[data-key]')?.getAttribute('data-key');
     
-    const coords = getRelativeCoords(e);
-    swipePathRef.current.push(coords);
-    drawSwipeTrail();
+    if (key) {
+      gestureStateRef.current = {
+        isDown: true,
+        isSwipe: false,
+        path: key,
+        startTime: Date.now(),
+      };
+      
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      const coords = getCoords(e);
+      if (ctx && coords && canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = 'var(--accent-primary)';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(coords[0], coords[1]);
+      }
+    }
+  };
+  
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!gestureStateRef.current.isDown) return;
+    
+    const element = document.elementFromPoint(e.clientX, e.clientY);
+    const key = element?.closest('[data-key]')?.getAttribute('data-key');
+    
+    if (key && key.length === 1 && gestureStateRef.current.path[gestureStateRef.current.path.length - 1] !== key) {
+      gestureStateRef.current.path += key;
+      if ([...new Set(gestureStateRef.current.path)].length > 1) {
+        gestureStateRef.current.isSwipe = true;
+      }
+    }
 
-    for (const [key, ref] of keyRefs.current.entries()) {
-        const rect = ref?.getBoundingClientRect();
-        if (ref && rect) {
-            const keyboardRect = keyboardRef.current!.getBoundingClientRect();
-            if (
-                e.clientX > rect.left && e.clientX < rect.right &&
-                e.clientY > rect.top && e.clientY < rect.bottom
-            ) {
-                const lastKey = swipeKeysRef.current[swipeKeysRef.current.length - 1];
-                if (key.length === 1 && key !== lastKey) {
-                    swipeKeysRef.current.push(key);
-                }
-            }
-        }
+    const ctx = canvasRef.current?.getContext('2d');
+    const coords = getCoords(e);
+    if(ctx && coords) {
+        ctx.lineTo(coords[0], coords[1]);
+        ctx.stroke();
     }
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (!isSwiping) return;
-    setIsSwiping(false);
-    
-    // Check if it was a swipe or a click
-    const isSwipe = swipePathRef.current.length > 3 && swipeKeysRef.current.length > 1;
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!gestureStateRef.current.isDown) return;
 
+    const { path, isSwipe } = gestureStateRef.current;
+    
     if (isSwipe) {
-        const word = findBestWord(swipeKeysRef.current.join(''));
+        const word = findBestWord(path);
         if (word) {
-            const finalWord = isShifted ? word.charAt(0).toUpperCase() + word.slice(1) : word;
-            onKeyPress(finalWord + ' ');
+          onKeyPress(word);
         }
+    } else {
+        handleKeyClick(path);
     }
     
-    // Clear trail
-    swipePathRef.current = [];
-    drawSwipeTrail();
-    if (isShifted) setIsShifted(false);
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx && canvas) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
     
-    e.currentTarget.releasePointerCapture(e.pointerId);
+    gestureStateRef.current = {
+      isDown: false,
+      isSwipe: false,
+      path: '',
+      startTime: 0,
+    };
   };
   
   const handleKeyClick = (key: string) => {
-     // This handles clicks when swipe gesture is not made
-    if (swipePathRef.current.length <= 3) {
-      if (key === 'shift') {
-        setIsShifted(!isShifted);
-        return;
-      }
-      const keyValue = isShifted ? key.toUpperCase() : key.toLowerCase();
-      onKeyPress(keyValue);
-      if (isShifted) setIsShifted(false);
+    switch (key) {
+      case 'shift':
+        const now = Date.now();
+        if (now - lastShiftTapRef.current < 300) { 
+          setShiftMode(prev => prev === 'caps' ? 'off' : 'caps');
+        } else {
+          setShiftMode(prev => prev === 'off' ? 'once' : 'off');
+        }
+        lastShiftTapRef.current = now;
+        break;
+      case '?123':
+        setLayout('symbols');
+        break;
+      case 'ABC':
+        setLayout('letters');
+        break;
+      case 'backspace':
+      case 'space':
+      case 'send':
+      case '.':
+        onKeyPress(key);
+        break;
+      default:
+        onKeyPress(key);
+        if (shiftMode === 'once') {
+          setShiftMode('off');
+        }
+        break;
     }
   };
+  
+  const currentLayout = layout === 'letters' 
+    ? (shiftMode !== 'off' ? upperCaseLayout : lowerCaseLayout) 
+    : symbolsLayout;
 
-  useEffect(() => {
-    const keyboardEl = keyboardRef.current;
-    const canvas = canvasRef.current;
-    if (!keyboardEl || !canvas) return;
-  
-    const resizeObserver = new ResizeObserver(() => {
-      canvas.width = keyboardEl.offsetWidth;
-      canvas.height = keyboardEl.offsetHeight;
-    });
-  
-    resizeObserver.observe(keyboardEl);
-  
-    return () => resizeObserver.unobserve(keyboardEl);
-  }, []);
-  
   return (
-    <div 
-        className="w-full max-w-2xl bg-gray-800/80 p-2 rounded-xl relative touch-none"
-        ref={keyboardRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
+    <div
+      ref={containerRef}
+      className="w-full flex flex-col gap-1.5 p-2 bg-[var(--bg-secondary)] select-none touch-none relative"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onPointerLeave={handlePointerUp}
     >
-       <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none z-10" />
-      <div className="space-y-2">
-        {keyLayout.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex justify-center gap-1.5">
-            {row.map((key) => {
-              const displayKey = isShifted && key.length === 1 ? key.toUpperCase() : key;
-              return (
+      <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none" />
+      {currentLayout.map((row, rowIndex) => (
+        <div key={rowIndex} className="flex gap-1.5 justify-center w-full">
+            {rowIndex === 1 && layout === 'letters' && <div className="w-2 md:w-4 flex-shrink" />}
+            {row.map((keyVal) => (
                 <Key
-                  // Fix: Ensure ref callback does not return a value.
-                  // The `Map.set` method returns the map, which was causing a type error.
-                  // Wrapping the call in a block `{}` fixes this.
-                  ref={(el) => { keyRefs.current.set(key, el); }}
-                  key={key}
-                  value={displayKey}
-                  originalKey={key}
-                  onClick={handleKeyClick}
+                  key={keyVal}
+                  value={keyVal}
+                  isShiftActive={shiftMode === 'once'}
+                  isCapsLock={shiftMode === 'caps'}
                 />
-              );
-            })}
-          </div>
-        ))}
-        <div className="flex justify-center gap-1.5">
-            {/* Fix: Ensure ref callback does not return a value by wrapping it in a block. */}
-            <Key ref={(el) => { keyRefs.current.set('space', el); }} value="space" originalKey="space" onClick={handleKeyClick} />
-            {/* Fix: Ensure ref callback does not return a value by wrapping it in a block. */}
-            <Key ref={(el) => { keyRefs.current.set('send', el); }} value="send" originalKey="send" onClick={handleKeyClick} />
+            ))}
+             {rowIndex === 1 && layout === 'letters' && <div className="w-2 md:w-4 flex-shrink" />}
         </div>
-      </div>
+      ))}
     </div>
   );
 };
