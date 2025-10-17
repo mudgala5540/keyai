@@ -1,0 +1,5 @@
+{
+  "name": "AI Communicator Keyboard",
+  "description": "An AI-powered keyboard assistant designed to help users, especially those with aphasia, communicate more effectively. It refines text, adjusts tone, and learns personal writing styles to provide context-aware suggestions.",
+  "requestFramePermissions": []
+}
